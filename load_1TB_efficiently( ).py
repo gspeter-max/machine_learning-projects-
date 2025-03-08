@@ -1,40 +1,35 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import sum
+from pyspark.ml.features import VectorAssembler
 from pyspark.ml.classification import LogisticRegression
-from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
-# Initialize Spark Session
-spark = SparkSession.builder \
-    .appName('ai_data_processing') \
-    .config('spark.sql.shuffle.partitions', 500) \
-    .getOrCreate()
 
-# Load CSV with correct syntax
-df = spark.read.csv('/content/linearly_separable_classification.csv', header=True, inferSchema=True)
+spark = SparkSession.builder.appName('data_load').getOrCreate()
+df = spark.read.option('header', True).option('inferSchema', True).csv('/content/sample_data/mnist_test.csv')
 
-# Repartition the dataframe to optimize parallelism
-df = df.repartition(100)
+num_partition = max(100, df.rdd.getNumPartitions()) 
+df = df.repartition(num_partition)
 
-# Convert to Parquet (Uncomment if needed)
-# df.write.mode('overwrite').parquet('/content/linearly_separable_classification.parquet')
+df.write.mode('overwrite').option('mergeSchema', True).option('compression', 'snappy').parquet('/content/sample_data/mnist_test.parquet')
+df_parquet = spark.read.parquet('/content/sample_data/mnist_test.parquet')
 
-# Read Parquet file
-df_parquet = spark.read.parquet('/content/linearly_separable_classification.parquet')
+df_parquet = df_parquet.fillna({'col_name': 0})  
+numeric_features = [c for c, dtype in df_parquet.dtypes if dtype in ('int', 'double')]
+vector = VectorAssembler(inputCols=numeric_features, outputCol='features_1')
+df_vectors = vector.transform(df_parquet)
 
-# Ensure partitioning is correct
-df_parquet = df_parquet.repartition(1000)
+lr = LogisticRegression(featuresCol='features_1', labelCol='label_features')  
+paramGrid = ParamGridBuilder()\
+    .addGrid(lr.regParam, [0.2, 0.1, 0.4])\
+    .addGrid(lr.maxIter, [100, 200, 300])\
+    .build()
 
-# Fill NaN values
-df_parquet = df_parquet.fillna({'colname': sum(df_parquet['colname'])})
-
-# Feature Engineering
-feature_cols = [col for col in df_parquet.columns if col != 'label']  # Exclude label column
-vector = VectorAssembler(inputCols=feature_cols, outputCol='vector_features')
-df_parquet = vector.transform(df_parquet)
-
-# Logistic Regression Model
-lr = LogisticRegression(featuresCol='vector_features', labelCol='label')
-model = lr.fit(df_parquet)
-
-# Show output
-df_parquet.show(5)
+crossval = CrossValidator(
+    estimator=lr,
+    estimatorParamMaps=paramGrid,
+    evaluator=BinaryClassificationEvaluator(),
+    numFolds=3 
+)
+best_model = crossval.fit(df_vectors)
+df_parquet.show(10)
