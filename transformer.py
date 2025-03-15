@@ -1,152 +1,159 @@
-import tensorflow as tf
 import numpy as np
-import yfinance as yf
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
 
-# === 1. Positional Encoding Function ===
-def positional_encoding(position, d_model):
-    angle_rads = np.arange(position)[:, np.newaxis] / np.power(10000, (2 * (np.arange(d_model)[np.newaxis, :] // 2)) / np.float32(d_model))
-    angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-    angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-    return tf.cast(angle_rads, dtype=tf.float32)
+class my_transformers:
 
-# === 2. Scaled Dot-Product Attention ===
-def scaled_dot_product_attention(q, k, v):
-    matmul_qk = tf.matmul(q, k, transpose_b=True)
-    dk = tf.cast(tf.shape(k)[-1], tf.float32)
-    scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
-    attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
-    output = tf.matmul(attention_weights, v)
-    return output, attention_weights
+    def __init__(self, user_querys, d_model):
+        self.query_len = len(user_querys)
+        self.user_query = user_querys
+        self.word_to_index = { word : index for word, index in enumerate(user_querys) }
+        self.index_to_word = {index : word for  word , index in enumerate(user_querys) }
 
-# === 3. Multi-Head Attention ===
-class MultiHeadAttention(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_heads):
-        super(MultiHeadAttention, self).__init__()
-        self.num_heads = num_heads
-        self.d_model = d_model
-        assert d_model % num_heads == 0
-        self.depth = d_model // num_heads
-        self.wq = tf.keras.layers.Dense(d_model)
-        self.wk = tf.keras.layers.Dense(d_model)
-        self.wv = tf.keras.layers.Dense(d_model)
-        self.dense = tf.keras.layers.Dense(d_model)
+        self.d_model  = d_model
 
-    def split_heads(self, x, batch_size):
-        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
-        return tf.transpose(x, perm=[0, 2, 1, 3])
+
+
+    def word_encoding(self):
+
+        self.word_embeding = np.random.randn(self.query_len , self.d_model)
+        print(self.word_embeding)
+        ''' 
+        you have option you create a inital weight of that and after that during training that is update the importance
+        or value of the word in duing (self attnetion) 
+
+        self.word_embedding = np.random.rand(len(word_sentance), d_model ) 
+        d_model = that is the meaning of that how many demension to discribe you text like 512, 774 
+
+
+        '''
+
+    def potential_encoding(self):
+
+        self.potential_embedding  = np.zeros((self.query_len, self.d_model))
+        print(self.potential_embedding)
+        pos = np.arange(self.query_len)[ :, np.newaxis ]
+        i = np.arange(self.d_model)[np.newaxis : ]
+        angles = pos / np.power(10000 , ((2 *( i // 2)) / np.sqrt(self.d_model)))
+        print(angles)
+
+        self.potential_embedding[ :, ::2] = np.sin(angles[ : , ::2] )
+        self.potential_embedding[: , 1::2] = np.cos( angles[ :  , 1::2])
+
+        print(self.potential_embedding)
+
+    def po_wr_adding(self):
+            self.x = np.add( self.word_embeding , self.potential_embedding )
     
-    def call(self, v, k, q):
-        batch_size = tf.shape(q)[0]
-        q = self.wq(q)
-        k = self.wk(k)
-        v = self.wv(v)
-        q = self.split_heads(q, batch_size)
-        k = self.split_heads(k, batch_size)
-        v = self.split_heads(v, batch_size)
-        scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v)
-        scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
-        concat_attention = tf.reshape(scaled_attention, (batch_size, -1, self.d_model))
-        output = self.dense(concat_attention)
-        return output, attention_weights
-
-# === 4. Feed Forward Network ===
-def point_wise_feed_forward_network(d_model, dff):
-    return tf.keras.Sequential([
-        tf.keras.layers.Dense(dff, activation='relu'),
-        tf.keras.layers.Dense(d_model)
-    ])
-
-# === 5. Transformer Encoder Layer ===
-class EncoderLayer(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_heads, dff, rate=0.1):
-        super(EncoderLayer, self).__init__()
-        self.mha = MultiHeadAttention(d_model, num_heads)
-        self.ffn = point_wise_feed_forward_network(d_model, dff)
-        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.dropout1 = tf.keras.layers.Dropout(rate)
-        self.dropout2 = tf.keras.layers.Dropout(rate)
     
-    def call(self, x, training):
-        attn_output, _ = self.mha(x, x, x)
-        attn_output = self.dropout1(attn_output, training=training)
-        out1 = self.layernorm1(x + attn_output)
-        ffn_output = self.ffn(out1)
-        ffn_output = self.dropout2(ffn_output, training=training)
-        out2 = self.layernorm2(out1 + ffn_output)
-        return out2
-
-# === 6. Transformer Encoder ===
-class Encoder(tf.keras.layers.Layer):
-    def __init__(self, num_layers, d_model, num_heads, dff, input_vocab_size, maximum_position_encoding, rate=0.1):
-        super(Encoder, self).__init__()
-        self.d_model = d_model
-        self.num_layers = num_layers
-        self.embedding = tf.keras.layers.Dense(d_model)
-        self.pos_encoding = positional_encoding(maximum_position_encoding, d_model)
-        self.enc_layers = [EncoderLayer(d_model, num_heads, dff, rate) for _ in range(num_layers)]
-        self.dropout = tf.keras.layers.Dropout(rate)
+        def softmax(self,x):
     
-    def call(self, x, training):
-        seq_len = tf.shape(x)[1]
-        x = self.embedding(x)
-        x += self.pos_encoding[:seq_len, :]
-        x = self.dropout(x, training=training)
-        for i in range(self.num_layers):
-            x = self.enc_layers[i](x, training = True)
-        return x
-
-# === 7. Final Time Series Transformer Model ===
-class TimeSeriesTransformer(tf.keras.Model):
-    def __init__(self, num_layers, d_model, num_heads, dff, input_size, maximum_position_encoding):
-        super(TimeSeriesTransformer, self).__init__()
-        self.encoder = Encoder(num_layers, d_model, num_heads, dff, input_size, maximum_position_encoding)
-        self.final_layer = tf.keras.layers.Dense(1)  # Predict next stock price
+            ex = np.exp(x - np.max(x))
+            return ex / np.sum(ex)
     
-    def call(self, x, training = True):
-        enc_output = self.encoder(x, training = True)
-        output = self.final_layer(enc_output[:, -1, :])
-        return output
-
-# === 8. Load and Prepare Data ===
-data = yf.download('^GSPC', start='2010-01-01', end='2023-12-31')['Close'].values.reshape(-1, 1)
-scaler = MinMaxScaler()
-scaled_data = scaler.fit_transform(data)
-
-# Prepare sequences
-sequence_length = 60
-x, y = [], []
-for i in range(len(scaled_data) - sequence_length):
-    x.append(scaled_data[i:i+sequence_length])
-    y.append(scaled_data[i+sequence_length])
-
-x, y = np.array(x), np.array(y)
-split = int(0.8 * len(x))
-x_train, y_train = x[:split], y[:split]
-x_test, y_test = x[split:], y[split:]
-
-# === 9. Initialize and Train Transformer ===
-model = TimeSeriesTransformer(
-    num_layers=2, d_model=64, num_heads=4, dff=256,
-    input_size=x_train.shape[-1], maximum_position_encoding=sequence_length
-)
-model.compile(optimizer='adam', loss='mse')
-model.fit(x_train, y_train, epochs=10, batch_size=32, validation_data=(x_test, y_test))
-
-# === 10. Evaluate Model ===
-predictions = model.predict(x_test)
-predictions = scaler.inverse_transform(predictions)
-y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
-
-# Plot
-plt.figure(figsize=(14, 5))
-plt.plot(y_test, label='Actual')
-plt.plot(predictions, label='Predicted')
-plt.title('S&P 500 Stock Price Prediction')
-plt.xlabel('Time')
-plt.ylabel('Stock Price')
-plt.legend()
-plt.show()
+        def self_attention( self, q,k,v):
+    
+            score = (np.dot(q, k.T)/ self.d_model)
+            soft_score = self.softmax(score)
+            return np.dot(soft_score , v )
+    
+        def multi_head_attention(self,num_head, x):
+    
+            w_q = np.random.randn(self.d_model, self.d_model)
+            w_k = np.random.randn(self.d_model, self.d_model)
+            w_v = np.random.randn(self.d_model, self.d_model)
+            w_0 = np.random.randn(self.d_model, self.d_model)
+    
+            q  = np.dot( x, w_q)
+            k = np.dot( x, w_k)
+            v = np.dot( x, w_v)
+    
+            assert self.d_model % num_head == 0
+    
+            sub_len = int(self.d_model / num_head)
+    
+            head_q = np.reshape( q, (self.query_len,num_head, sub_len))
+            head_k = np.reshape( k, ( -1,num_head, sub_len))
+            head_v = np.reshape( v, ( -1, num_head, sub_len))
+    
+            concat_ = np.zeros((self.query_len , num_head, sub_len))
+            for i in range(num_head):
+                concat_[:,i,:] = self.self_attention(head_q[:,i,:], head_k[:,i,:], head_v[:,i,:])
+    
+            combine_concat_ = np.reshape(concat_, (concat_.shape[0], concat_.shape[1] * concat_.shape[2] ))
+        print(combine_concat_.shape)
+                return np.dot(combine_concat_ , w_0)
+        
+            def layernormalization(self,x):
+        
+                lambdas = np.ones(( self.query_len,self.d_model))
+                beta = np.zeros((self.query_len, self.d_model))
+        
+                return  ((x - np.mean(x , axis = 1 , keepdims = True))/ np.std(x , axis = 1, keepdims = True))* lambdas  + beta
+        
+            def add_norm(self, x,num_head):
+        
+                mha_output = self.multi_head_attention(num_head, x)
+                add_thing = mha_output + x
+                print(add_thing)
+        
+                return self.layernormalization(add_thing)
+        
+            class feedforward_network:
+        
+                def __init__(self,input_shape, laten_shape):
+                    self.input_shape = input_shpape
+                    self.laten_shape = laten_shape
+        
+                def Leakyrelu(self,x, negative_slop = 0.001 ):
+                    return np.where(x <= 0, self.negative_slop * x , x)
+        
+        
+                def derivative(self,x,negative_slop):
+                    return np.where( x<= 0 , self.negative_slop , 1)
+        
+        
+                def make_weights(self):
+        
+                    self.w1 =  np.random.randn(self.input_shape,self.laten_shape )* 0.01,
+                    self.b1 =  np.zeros((self.layer_1_dim,1 )),
+        
+                    self.w2 =  np.random.randn(self.laten_shape , self.input_shape)* 0.01,
+            machine_learning.py [+]                                                                                                                                               121,28         68%
+                                                                                                                                                                                            
+            weights  = {
+                                'w1' : self.w1 ,
+                                'b1' : self.b1,
+                                'w2' : self.w2,
+                                'b2' : self.b2
+                            }
+                        return weights
+            
+                    def forward_propagation(self, x):
+            
+                                weights = self.make_weights()
+                                z1 =  np.dot(x, weights['w1'] ) + weights['b1']
+                                a1 =  self.Leakyrelu(z1)
+            
+                                z2 = np.dot(a1, weights['w2']) + weights['b2']
+                                a2 = self.Leakyrelu(z2)
+            
+                                forward_propagation = {
+                                        'z1' : z1 ,
+                                        'a1' : a1 ,
+                                        'z2' : z2 ,
+                                        'a2' : a2
+                                    }
+                               return a2
+            
+            
+            query = 'transformer, device that transfers electric energy from one alternating-current circuit to one or more other circuits, either increasing (stepping up) or reducing (stepping do
+            wn) the voltage. Transformers are employed for widely varying purposes; e.g., to reduce the voltage of conventional power circuits to operate low-voltage devices, such as doorbells and
+             toy electric trains, and to raise the voltage from electric generators so that electric power can be transmitted over long distances.'
+            x = np.random.randn(493,4)
+            
+            model = my_transformers(user_querys = qury , d_model = 4 )
+            result = model.multi_head_attention( 4, x)
+            ffd = model.feedforward_network(4, 70)
+            final_result = ffd.forward_propagation(result)
+            print(final_result)
+            machine_learning.py [+]                                                                                                                                               157,19         Bot
+                                                    
