@@ -98,6 +98,8 @@ class lloyd_algo:
             # 1.recompute mean as a new centroid and copute for each k ( not 3 )
 
                 # and another thing is here 
+# may be that computes for cluster right but that cluster column have only 3 centroid access 
+
                 mean_df = self.df.groupby(f'cluster').agg(*[
                     avg(col).alias(f'{col}_mean') for col in features 
                 ])
