@@ -67,27 +67,28 @@ class bayesian_regression:
         else: 
             raise ValueError('make sure that x and y in array') 
 
-    def prediction(self,x_test): 
+    def predict(self,x_test): 
         
         if self.Posterior_dist is None: 
             raise ValueError('Posterior dist is None')
         else: 
+            x_test = x_test.reshape(-1,1)
+            print(self.Posterior_dist.shape)
             y = np.dot(x_test, self.Posterior_dist)
-            return y 
+            return y.reshape(-1,1)
+
 
 model = bayesian_regression()
 model.fit() 
 
-x_test = np.linspace(0, 10, 100).reshape(-1, 1)
+x_test = np.linspace(0, 10, 100)
 y_test = true_slope * x_test + true_intercept + noise
 predictions = model.predict(x_test)
+print(y_test.shape)
+print(predictions.shape)
 
 mse = mean_squared_error(y_test, predictions)
 print("Mean Squared Error:", mse)
-
-
-        
-        
 
 
         
