@@ -31,5 +31,5 @@ df = pd.DataFrame({
 df['probability'][np.random.choice(df.index, size=100_000, replace=False)] = np.nan  # 10% missing values
 df['probability'][np.random.choice(df.index, size=50_000, replace=False)] = -0.1  # Some negative values
 
-# Run optimized function
+# Run optimized function    
 print("Final Expected Time:", find_prob(df))

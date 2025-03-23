@@ -80,7 +80,7 @@ class bayesian_regression:
 
 model = bayesian_regression()
 model.fit() 
-
+    
 x_test = np.linspace(0, 10, 100)
 y_test = true_slope * x_test + true_intercept + noise
 predictions = model.predict(x_test)
