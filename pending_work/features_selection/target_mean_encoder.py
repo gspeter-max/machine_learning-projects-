@@ -19,9 +19,9 @@ df_pandas = df.toPandas()
 
 class target_encoder: 
     
-    def __init__(self,stratergy, data : Union[pd.DataFrame, DataFrame], categorical_features : Union[list,str, np.ndarray],target_feature = None):  
+    def __init__(self,strategy, data : Union[pd.DataFrame, DataFrame], categorical_features : Union[list,str, np.ndarray],target_feature = None):  
         
-        self.stratergy = stratergy 
+        self.strategy = strategy 
         self.target_feature = target_feature 
         
         if isinstance(data , DataFrame): 
@@ -32,14 +32,14 @@ class target_encoder:
 
     def call(self): 
         if isinstance( self.categorical_features, str): 
-            if self.stratergy.lower() == 'auto': 
+            if self.strategy.lower() == 'auto': 
                 
                 self.data[self.categorical_features] = self.data[self.categorical_features].replace([values for index, values in enumerate(self.data[self.categorical_features].unique())] ,
                                                                         [index + 1 for index, values in enumerate(self.data[self.categorical_features].unique())]
                                                                                                     ) 
                 return self.data
 
-            if self.stratergy.lower() == 'mean': 
+            if self.strategy.lower() == 'mean': 
                 if self.target_feature is None: 
                     raise ValueError('None is not allow ') 
                 
@@ -57,17 +57,17 @@ class target_encoder:
 
             else: 
                 print(' that part  is not add') 
-                raise ValueError(' that is not include on this') 
+                raise ValueError(' that is not include in this') 
         
         else: 
             for categorical_column  in self.categorical_features:
-                if self.stratergy.lower() == 'auto': 
+                if self.strategy.lower() == 'auto': 
         
                     self.data[categorical_column] = self.data[categorical_column].replace([values for index, values in enumerate(self.data[categorical_column].unique())] ,
                                                                         [index + 1 for index, values in enumerate(self.data[categorical_column].unique())]
                                                                                                     ) 
 
-                if  self.stratergy.lower() == 'mean': 
+                if  self.strategy.lower() == 'mean': 
                     if self.target_feature is None: 
                         raise ValueError('None is not allow ') 
                     
@@ -83,7 +83,7 @@ class target_encoder:
                     self.data = self.data.drop(categorical_column, axis = 1 ) 
                 
                 else:
-                    raise ValueError('that stratergy is not included') 
+                    raise ValueError('that strategy is not included') 
             
             return self.data
 
@@ -91,7 +91,7 @@ cat_column = ['cat_feature_0', 'cat_feature_1',
        'cat_feature_2', 'cat_feature_3', 'cat_feature_4', 'cat_feature_5',
        'cat_feature_6', 'cat_feature_7', 'cat_feature_8', 'cat_feature_9']
 
-encoder = target_encoder(stratergy = 'mean',data = df_pandas ,
+encoder = target_encoder(strategy = 'mean',data = df_pandas ,
                          categorical_features = cat_column ,target_feature = 'target')
 
 df_ = encoder.call()
