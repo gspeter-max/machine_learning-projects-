@@ -1,8 +1,6 @@
 ''' 
-1. 3482. Analyze Organization Hierarchy
 2.1093. Statistics from a Large Sample, 
 3. 2241. Design an ATM Machine, 
-4. 2276. Count Integers in Intervals
 
 '''
 
