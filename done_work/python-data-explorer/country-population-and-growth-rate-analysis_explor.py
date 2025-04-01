@@ -1,11 +1,3 @@
-import kagglehub
-
-# Download latest version
-path = kagglehub.dataset_download("gauravkumar2525/country-population-and-growth-rate-analysis")
-
-print("Path to dataset files:", path)
-
-
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, row_number, desc, when,mean , stddev
 from pyspark.sql.types import *
@@ -34,7 +26,7 @@ print(df.show())
 #         ).otherwise( col('Population Growth') ) )
 
 # null_values  = df.select(sum(when(col('Population Growth').isNull(), 1).otherwise(0)).alias('null_col'))
-print(f' null values in that : {null_values.collect()[0][0]}')
+# print(f' null values in that : {null_values.collect()[0][0]}')
 types = [IntegerType(), DoubleType(), LongType(), FloatType(),DecimalType()]
 
 schema = df.schema
@@ -65,7 +57,6 @@ for col_ in inter_col:
         values += y.collect()[i][0]
     median = values / y.count()
     col_med.append((col_,median))
-
 print( ' outliers points')
 mean_ = float(df.select(mean('Population')).collect()[0][0])
 stddev_ = float(df.select(stddev('Population')).collect()[0][0])
@@ -74,7 +65,7 @@ outliers = df.filter(df['Population'] > (mean_ + stddev_ * 3))
 print(outliers.show())
 
 import numpy as np
-import pyspark.sql.functions as f
+import pyspark.sql.functions as F
 from pyspark.sql.types import *
 
 schema = df.schema.fields
@@ -93,12 +84,12 @@ for i in range(len(df_columns)):
         if x in columns_list:
             if y in columns_list:
                 
-                x_mean = data.select(mean(x).alias('first_features')).first()[0]
-                y_mean = data.select(mean(y).alias('second_features')).first()[0]
-                x_std = data.select(stddev(x).alias('std_x')).first()[0]
-                y_std = data.select(stddev(y).alias('std_y')).first()[0] 
+                x_mean = data.select(F.mean(x).alias('first_features')).first()[0]
+                y_mean = data.select(F.mean(y).alias('second_features')).first()[0]
+                x_std = data.select(F.stddev(x).alias('std_x')).first()[0]
+                y_std = data.select(F.stddev(y).alias('std_y')).first()[0] 
 
-                corr = df.select(f.sum((col(x) - x_mean) * (col(y) - y_mean))).first()[0]
+                corr = df.select(F.sum((col(x) - x_mean) * (col(y) - y_mean))).first()[0]
                 covex = df.select(x).count() - 1
 
                 v = corr / covex
@@ -109,9 +100,77 @@ for i in range(len(df_columns)):
                 else:
                     cov_matrix[i,j] = -1.0
                 
-                corr_matrix[i,j] = v / ( x_std * y_std) 
+                corr_matrix[i,j] = round((v / ( x_std * y_std)) ,4) 
 
 print(cov_matrix)
 print(corr_matrix)
+
+import pandas as pd 
+import numpy as np
+
+df = pd.read_csv('/content/drive/MyDrive/regression_dataset.csv')
+unique_values = {values : index for index , values in enumerate(np.unique(df['Feature4']))}
+df['Feature4'] = df['Feature4'].apply(lambda x : unique_values[x])
+
+def compute_loss_(y_true, y_pred): 
+    return np.mean(np.square(y_true - y_pred)) 
+
+y_true = np.array([3.0, 5.0, 2.5, 7.0])  
+y_pred = np.array([0.1, 0.2, 2.0, 7.8])  
+h = 0.00001 
+gradient = ((compute_loss_(y_true, y_pred) + h) - compute_loss_(y_true,y_pred)) / h 
+
+# y_true = df['Target']
+
+# that is for if you working with 1-1  
+def coff(x): 
+    y = df['Target']
+    x_mean = x.mean() 
+    y_mean = y.mean() 
+
+    diffx = x - x_mean 
+    diffy = y - y_mean 
+    upper = np.sum(diffx * diffy)
+    cov = upper / (len(x) - 1 )
+    var = np.sum(np.square(x - x_mean)) / (len(x) - 1)  
+    temp = x.std() 
+    return cov / var  
+
+# but before that you need to add a ones colum over here 
+
+df['beta'] = 1 
+df = df[['beta'] + [col_ for col_ in df.columns if col_ != 'beta']]
+x = df.drop('Target' , axis = 1)
+y = df['Target']
+
+# computeing inter. coff  ( x.T @ x ).inv() @ (x.T @ y) 
+beta_coff = np.linalg.inv((x.T @ x )) @ (x.T @ y )
+
+def compute_loss__(X, y, beta):
+    residuals = y - X @ beta
+    return np.mean(residuals ** 2)
+
+# Gradient Descent (optimized)
+def gradient_descent__(X, y, alpha=0.01, epochs=1000):
+    n, p = X.shape
+    beta = np.zeros(p)
+    losses = []
+    
+    for epoch in range(epochs):
+        residuals = y - X @ beta
+        gradient = -2/n * X.T @ residuals  # Analytical gradient
+        beta -= alpha * gradient
+        
+        # Track loss every 100 epochs
+        if epoch % 100 == 0:
+            loss = compute_loss__(X, y, beta)
+            losses.append(loss)
+            print(f'Epoch {epoch}: Loss = {loss:.4f}')
+    
+    return beta, losses
+
+# Run gradient descent
+beta_optimized, loss_history = gradient_descent__(x, y, alpha=0.01, epochs=1000)
+print("Optimized Coefficients:", beta_optimized)
 
 
